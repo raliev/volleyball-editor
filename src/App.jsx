@@ -13,6 +13,12 @@ const COURT_CENTER_X = 400;
 const COURT_CENTER_Y = 250;
 const OBJ_OFFSET = 25;
 
+const CUSTOM_PROPS = [
+  'id', 'role', 'customName', 'fromId', 'toId', 'rad',
+  'label', 'labelBgColor', 'strokeDashArray', 'selectable',
+  'hasControls', 'lockScalingX', 'lockScalingY', 'lockRotation'
+];
+
 const PRESET_COLORS = [
   { name: 'Черный', value: '#000000' },
   { name: 'Синий', value: '#3b82f6' },
@@ -34,6 +40,87 @@ const VolleyballEditor = () => {
   // Состояние сетки
   const [snapEnabled, setSnapEnabled] = useState(true);
   const [gridFrequency, setGridFrequency] = useState(1); // 1x, 2x, 4x
+
+  const timerRef = useRef(null);
+
+  const saveState = () => {
+    if (!fabricCanvas) return;
+    clearTimeout(timerRef.current);
+    timerRef.current = setTimeout(() => {
+      const json = fabricCanvas.toJSON(CUSTOM_PROPS);
+      localStorage.setItem('vball_drill_state', JSON.stringify(json));
+      console.log("Состояние сохранено");
+    }, 500);
+  };
+
+  // Слушатель изменений для автосохранения
+  useEffect(() => {
+    if (!fabricCanvas) return;
+
+    // ИСПРАВЛЕНИЕ: Переносим загрузку В НАЧАЛО (до return)
+    const saved = localStorage.getItem('vball_drill_state');
+    if (saved) {
+      try {
+        const json = JSON.parse(saved);
+        fabricCanvas.loadFromJSON(json, () => {
+          // Используем role вместо type для поиска стрелок
+          fabricCanvas.getObjects().filter(o => o.role === 'arrow').forEach(arrow => {
+            updateArrow(arrow, fabricCanvas);
+          });
+          renderAllStatic(fabricCanvas);
+          fabricCanvas.renderAll();
+        });
+      } catch (e) {
+        console.error("Ошибка парсинга JSON:", e);
+      }
+    }
+
+    const handleChange = (options) => {
+      if (options.target && options.target.isStatic) return;
+      saveState();
+    };
+
+    fabricCanvas.on('object:modified', handleChange);
+    fabricCanvas.on('object:added', handleChange);
+    fabricCanvas.on('object:removed', handleChange);
+
+    return () => {
+      fabricCanvas.off('object:modified', handleChange);
+      fabricCanvas.off('object:added', handleChange);
+      fabricCanvas.off('object:removed', handleChange);
+    };
+  }, [fabricCanvas]);
+
+  const exportJson = () => {
+    const fileName = prompt("Введите имя файла для сохранения:", "drill") || "drill";
+    const data = fabricCanvas.toJSON(CUSTOM_PROPS);
+    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(data));
+    const downloadAnchorNode = document.createElement('a');
+    downloadAnchorNode.setAttribute("href", dataStr);
+    downloadAnchorNode.setAttribute("download", `${fileName}.json`);
+    document.body.appendChild(downloadAnchorNode);
+    downloadAnchorNode.click();
+    downloadAnchorNode.remove();
+  };
+  const importJson = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (f) => {
+      // Очищаем всё перед импортом
+      fabricCanvas.clear();
+      fabricCanvas.loadFromJSON(JSON.parse(f.target.result), () => {
+        // Восстанавливаем связи и статику
+        fabricCanvas.getObjects().filter(o => o.role === 'arrow').forEach(a => updateArrow(a, fabricCanvas));
+        renderAllStatic(fabricCanvas);
+        fabricCanvas.renderAll();
+        saveState(); // Сразу сохраняем в localStorage
+      });
+    };
+    reader.readAsText(file);
+    e.target.value = ''; // Сбрасываем input, чтобы можно было загрузить тот же файл дважды
+  };
+
 
   useEffect(() => {
     const canvas = new fabric.Canvas(canvasRef.current, {
@@ -65,6 +152,29 @@ const VolleyballEditor = () => {
   };
 
   const drawCourtBackground = (canvas) => {
+
+    const zoneTextStyle = {
+      fontSize: 60,
+      fill: 'rgba(0,0,0,0.08)', // Очень бледный, чтобы не мешать
+      fontWeight: 'bold',
+      selectable: false,
+      evented: false,
+      isStatic: true,
+      originX: 'center',
+      originY: 'center',
+      excludeFromExport: true
+    };
+
+    const zones = [
+      // Левая сторона (Team A)
+      { n: '5', x: 100, y: 130 }, { n: '6', x: 100, y: 250 }, { n: '1', x: 100, y: 370 },
+      { n: '4', x: 300, y: 130 }, { n: '3', x: 300, y: 250 }, { n: '2', x: 300, y: 370 },
+      // Правая сторона (Team B)
+      { n: '2', x: 500, y: 130 }, { n: '3', x: 500, y: 250 }, { n: '4', x: 500, y: 370 },
+      { n: '1', x: 700, y: 130 }, { n: '6', x: 700, y: 250 }, { n: '5', x: 700, y: 370 }
+    ];
+
+
     const floor = new fabric.Rect({
       left: 400, top: 250, width: 18 * SCALE, height: 9 * SCALE,
       fill: '#ffedcc', stroke: 'black', strokeWidth: 3,
@@ -72,6 +182,10 @@ const VolleyballEditor = () => {
       name: 'floor', isStatic: true
     });
     canvas.add(floor);
+
+    zones.forEach(z => {
+      canvas.add(new fabric.Text(z.n, { ...zoneTextStyle, left: z.x, top: z.y }));
+    });
 
     const lineStyle = { stroke: 'black', strokeWidth: 2, selectable: false, evented: false, isStatic: true, opacity: 0.3 };
 
@@ -94,7 +208,8 @@ const VolleyballEditor = () => {
       for (let y = 250 - 4.5 * SCALE; y <= 250 + 4.5 * SCALE; y += step) {
         const dot = new fabric.Circle({
           left: x, top: y, radius: 1, fill: '#000', opacity: 0.1,
-          selectable: false, evented: false, originX: 'center', originY: 'center', isStatic: true
+          selectable: false, evented: false, originX: 'center', originY: 'center', isStatic: true,
+          excludeFromExport: true
         });
         canvas.add(dot);
       }
@@ -115,8 +230,8 @@ const VolleyballEditor = () => {
       }
 
       const moved = options.target;
-      const targets = moved.type === 'activeSelection' ? moved.getObjects() : [moved];
-      fabricCanvas.getObjects().filter(o => o.type === 'arrow').forEach(arrow => {
+      const targets = moved.role === 'activeSelection' ? moved.getObjects() : [moved];
+      fabricCanvas.getObjects().filter(o => o.role === 'arrow').forEach(arrow => {
         if (targets.some(t => t.id === arrow.fromId || t.id === arrow.toId)) {
           updateArrow(arrow, fabricCanvas);
         }
@@ -135,6 +250,9 @@ const VolleyballEditor = () => {
 
     return () => {
       fabricCanvas.off('object:moving', onMoving);
+      fabricCanvas.off('selection:created', onSelection);
+      fabricCanvas.off('selection:updated', onSelection);
+      fabricCanvas.off('selection:cleared');
     };
   }, [fabricCanvas, snapEnabled, gridFrequency]);
 
@@ -195,20 +313,21 @@ const VolleyballEditor = () => {
     let code = "from court_framework import VolleyballCourt\n\ndef draw_custom_drill():\n    court = VolleyballCourt(\"Exported Drill\")\n\n";
 
     objs.forEach(o => {
-      if (['player', 'target', 'cone'].includes(o.type)) {
+      if (['player', 'target', 'cone', 'point'].includes(o.role)) {
         const p = o.getCenterPoint();
         const x = ((p.x - COURT_CENTER_X) / SCALE).toFixed(2);
         const y = (-((p.y - COURT_CENTER_Y) / SCALE)).toFixed(2);
-        const varName = `${o.type}_${o.id.replace(/\W/g,'')}`;
-        if (o.type === 'player') code += `    ${varName} = court.add_player("${o.customName}", ${x}, ${y})\n`;
-        if (o.type === 'target') code += `    ${varName} = court.add_target("T", ${x}, ${y})\n`;
-        if (o.type === 'cone')   code += `    ${varName} = court.add_cone("C", ${x}, ${y})\n`;
+        const varName = `${o.role}_${o.id.replace(/\W/g,'')}`;
+        if (o.role === 'player') code += `    ${varName} = court.add_player("${o.customName}", ${x}, ${y})\n`;
+        if (o.role === 'target') code += `    ${varName} = court.add_target("T", ${x}, ${y})\n`;
+        if (o.role === 'cone')   code += `    ${varName} = court.add_cone("C", ${x}, ${y})\n`;
+        if (o.role === 'point')  code += `    ${varName} = court.add_point("C", ${x}, ${y})\n`;
         mapping[o.id] = varName;
       }
     });
 
     code += "\n";
-    objs.filter(o => o.type === 'arrow').forEach(a => {
+    objs.filter(o => o.role === 'arrow').forEach(a => {
       const isCurved = a.rad !== 0;
       const noVal = a.label ? `"${a.label}"` : "None";
       code += `    court.add_arrow(${mapping[a.fromId]}, ${mapping[a.toId]}, curved=${isCurved ? 'True' : 'False'}, rad=${a.rad}, no=${noVal}, line_color="${a.stroke}", color="${a.labelBgColor}", style=${a.strokeDashArray ? "'--'" : "'-'"})\n`;
@@ -220,12 +339,48 @@ const VolleyballEditor = () => {
 
   const addObject = (type) => {
     const id = getUUID();
-    const base = { left: 400, top: 250, id, hasControls: false, lockScalingX: true, lockScalingY: true, lockRotation: true, originX: 'center', originY: 'center' };
+    // НЕ переопределяйте type, используйте role!
+    const base = { left: 400, top: 250, id, role: type, hasControls: false, lockScalingX: true, lockScalingY: true, lockRotation: true, originX: 'center', originY: 'center' };
     let obj;
-    if (type === 'player') obj = new fabric.Group([new fabric.Circle({ radius: 18, fill: 'white', stroke: 'black', strokeWidth: 2, originX: 'center', originY: 'center' }), new fabric.Text("P", { fontSize: 14, originX: 'center', originY: 'center', fontWeight: 'bold' })], { ...base, type: 'player', customName: "P" });
-    else if (type === 'target') obj = new fabric.Text('X', { ...base, fontSize: 36, fill: 'green', fontWeight: 'bold', type: 'target' });
-    else if (type === 'cone') obj = new fabric.Triangle({ ...base, width: 30, height: 30, fill: 'orange', stroke: 'black', strokeWidth: 2, type: 'cone' });
+    // type для Fabric остается стандартным (group, text, triangle)
+    if (type === 'player') obj = new fabric.Group([new fabric.Circle({ radius: 18, fill: 'white', stroke: 'black', strokeWidth: 2, originX: 'center', originY: 'center' }), new fabric.Text("P", { fontSize: 14, originX: 'center', originY: 'center', fontWeight: 'bold' })], { ...base, customName: "P" });
+    else if (type === 'target') obj = new fabric.Text('X', { ...base, fontSize: 36, fill: 'green', fontWeight: 'bold' });
+    else if (type === 'cone') obj = new fabric.Triangle({ ...base, width: 30, height: 30, fill: 'orange', stroke: 'black', strokeWidth: 2 });
+    else if (type === 'point') {
+      obj = new fabric.Circle({
+        ...base, radius: 6, fill: 'black', stroke: 'black', strokeWidth: 1, role: 'point'
+      });
+    }
     fabricCanvas.add(obj); obj.bringToFront(); fabricCanvas.setActiveObject(obj);
+  };
+
+  const addQuickPlayer = (side, pos, label, bgColor = 'white') => {
+    const id = getUUID();
+    // Координаты зон для сторон
+    const posMap = {
+      left: {
+        '1': { x: 100, y: 370 }, '2': { x: 300, y: 370 }, '3': { x: 300, y: 250 },
+        '4': { x: 300, y: 130 }, '5': { x: 100, y: 130 }, '6': { x: 100, y: 250 }
+      },
+      right: {
+        '1': { x: 700, y: 130 }, '2': { x: 500, y: 130 }, '3': { x: 500, y: 250 },
+        '4': { x: 500, y: 370 }, '5': { x: 700, y: 370 }, '6': { x: 700, y: 250 }
+      }
+    };
+
+    const coords = posMap[side][pos] || { x: 400, y: 250 };
+
+    const obj = new fabric.Group([
+      new fabric.Circle({ radius: 18, fill: bgColor, stroke: 'black', strokeWidth: 2, originX: 'center', originY: 'center' }),
+      new fabric.Text(label, { fontSize: 14, originX: 'center', originY: 'center', fontWeight: 'bold' })
+    ], {
+      left: coords.x, top: coords.y, id, role: 'player', customName: label,
+      hasControls: false, lockScalingX: true, lockScalingY: true, lockRotation: true, originX: 'center', originY: 'center'
+    });
+
+    fabricCanvas.add(obj);
+    fabricCanvas.setActiveObject(obj);
+    saveState();
   };
 
   return (
@@ -235,7 +390,44 @@ const VolleyballEditor = () => {
           <div className="w-64 bg-white p-4 rounded shadow-lg flex flex-col gap-3">
             <h2 className="font-bold border-b pb-2 text-gray-700 uppercase text-xs tracking-wider">Объекты</h2>
             <button onClick={() => addObject('player')} className="bg-blue-500 text-white p-2 rounded text-sm hover:bg-blue-600">➕ Игрок</button>
-            <button onClick={() => addObject('target')} className="bg-green-600 text-white p-2 rounded text-sm hover:bg-green-700">➕ Мишень</button>
+
+            <div className="flex flex-col gap-1 mt-1">
+              {/* Номера зон */}
+              <div className="flex gap-1 justify-between">
+                <div className="flex flex-wrap gap-1 w-1/2">
+                  {[1,2,3,4,5,6].map(n => (
+                      <button key={n} onClick={() => addQuickPlayer('left', String(n), String(n), '#dbeafe')}
+                              className="w-6 h-6 bg-blue-100 text-[10px] rounded border border-blue-300">L{n}</button>
+                  ))}
+                </div>
+                <div className="flex flex-wrap gap-1 w-1/2 justify-end">
+                  {[1,2,3,4,5,6].map(n => (
+                      <button key={n} onClick={() => addQuickPlayer('right', String(n), String(n), '#fee2e2')}
+                              className="w-6 h-6 bg-red-100 text-[10px] rounded border border-red-300">R{n}</button>
+                  ))}
+                </div>
+              </div>
+              {/* Роли */}
+              <div className="flex gap-1 justify-between mt-1">
+                <div className="flex flex-wrap gap-1 w-1/2">
+                  {['S','OH','OPP','MB','L'].map(r => (
+                      <button key={r} onClick={() => addQuickPlayer('left', '6', r, '#dbeafe')}
+                              className="px-1 h-6 bg-blue-100 text-[9px] rounded border border-blue-300">{r}</button>
+                  ))}
+                </div>
+                <div className="flex flex-wrap gap-1 w-1/2 justify-end">
+                  {['S','OH','OPP','MB','L'].map(r => (
+                      <button key={r} onClick={() => addQuickPlayer('right', '6', r, '#fee2e2')}
+                              className="px-1 h-6 bg-red-100 text-[9px] rounded border border-red-300">{r}</button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div className="flex gap-2">
+              <button onClick={() => addObject('target')} className="flex-1 bg-green-600 text-white p-2 rounded text-xs">➕ Target</button>
+              <button onClick={() => addObject('point')} className="flex-1 bg-black text-white p-2 rounded text-xs">➕ Point</button>
+            </div>
             <button onClick={() => addObject('cone')} className="bg-orange-400 text-white p-2 rounded text-sm hover:bg-orange-500">➕ Конус</button>
             <button onClick={() => {
               const active = fabricCanvas.getActiveObjects();
@@ -244,7 +436,11 @@ const VolleyballEditor = () => {
                 fabricCanvas.discardActiveObject(); fabricCanvas.renderAll();
                 setTimeout(() => {
                   const id = getUUID();
-                  const arrow = new fabric.Path('M 0 0 L 1 1', { stroke: '#000000', strokeWidth: 3, fill: '', selectable: true, hasControls: false, lockMovementX: true, lockMovementY: true, id, type: 'arrow', fromId: o1.id, toId: o2.id, rad: 0, label: '', labelBgColor: '#ffffff' });
+                  const arrow = new fabric.Path('M 0 0 L 1 1', {
+                    stroke: '#000000', strokeWidth: 3, fill: '', selectable: true, hasControls: false,
+                    lockMovementX: true, lockMovementY: true, id, role: 'arrow', // Использовать role
+                    fromId: o1.id, toId: o2.id, rad: 0, label: '', labelBgColor: '#ffffff'
+                  });
                   fabricCanvas.add(arrow); arrow.sendToBack(); arrow.bringForward(); updateArrow(arrow, fabricCanvas); fabricCanvas.renderAll();
                 }, 20);
               } else setIsConnecting(true);
@@ -271,7 +467,13 @@ const VolleyballEditor = () => {
               fabricCanvas.discardActiveObject().renderAll();
             }} className="bg-red-500 text-white p-2 rounded text-sm hover:bg-red-600">Удалить</button>
           </div>
-
+          <div className="flex flex-col gap-2 mt-4 border-t pt-4">
+            <button onClick={exportJson} className="bg-gray-700 text-white p-2 rounded text-xs hover:bg-gray-800">📤 Экспорт JSON</button>
+            <label className="bg-gray-200 text-gray-700 p-2 rounded text-xs text-center cursor-pointer hover:bg-gray-300">
+              📥 Импорт JSON
+              <input type="file" className="hidden" accept=".json" onChange={importJson} />
+            </label>
+          </div>
           {/* Холст */}
           <div className="flex-1 flex justify-center items-center p-4">
             <div className="bg-white p-2 rounded shadow-2xl relative"><canvas ref={canvasRef} /></div>
@@ -282,8 +484,8 @@ const VolleyballEditor = () => {
             <h2 className="font-bold border-b pb-2 text-gray-700 uppercase text-xs tracking-wider">Свойства</h2>
             {selectedObjs.length === 1 && (
                 <div className="mt-4 flex flex-col gap-4">
-                  <p className="text-gray-400 uppercase text-[10px]">Тип: {selectedObjs[0].type}</p>
-                  {selectedObjs[0].type === 'player' && (
+                  <p className="text-gray-400 uppercase text-[10px]">Тип: {selectedObjs[0].role}</p>
+                  {selectedObjs[0].role === 'player' && (
                       <div>
                         <label className="font-bold block mb-1">ИМЯ:</label>
                         <input className="border p-2 w-full rounded" value={selectedObjs[0].customName} onChange={(e) => {
@@ -293,7 +495,7 @@ const VolleyballEditor = () => {
                         }} />
                       </div>
                   )}
-                  {selectedObjs[0].type === 'arrow' && (
+                  {selectedObjs[0].role === 'arrow' && (
                       <div className="flex flex-col gap-4">
                         <button onClick={() => {
                           const arrow = selectedObjs[0];
