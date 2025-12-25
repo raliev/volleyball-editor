@@ -21,7 +21,7 @@ import {
 import Sidebar from './components/Sidebar';
 import PropsPanel from './components/PropsPanel';
 import CodeOutput from './components/CodeOutput';
-
+import Volleyball3DApp from './Volleyball3D.jsx'; // Импортируем ваш новый файл
 const VolleyballEditor = () => {
   const canvasRef = useRef(null);
   const [fabricCanvas, setFabricCanvas] = useState(null);
@@ -32,7 +32,7 @@ const VolleyballEditor = () => {
   const timerRef = useRef(null);
   const [drillTitle, setDrillTitle] = useState("");
   const [drillDesc, setDrillDesc] = useState("");
-
+  const [show3D, setShow3D] = useState(false);
   useEffect(() => {
     if (!fabricCanvas) return;
     fabricCanvas.drillTitle = drillTitle;
@@ -284,6 +284,59 @@ const VolleyballEditor = () => {
     saveState();
   };
 
+  const getCurrentDrillData = () => {
+    if (!fabricCanvas) return null;
+
+    // Получаем все объекты, исключая статические элементы (сетку, фон) и метаданные
+    const objects = fabricCanvas.getObjects()
+        .filter(obj => !obj.isStatic && !obj.isMetadata)
+        .map((obj) => {
+          const p = obj.getCenterPoint();
+
+          // Используем константы из вашего проекта для перевода пикселей в метры
+          // COURT_CENTER_X = 400, COURT_CENTER_Y = 250, SCALE = 40
+          const base = {
+            id: obj.id,
+            // Проверяем роль (role), так как тип в Fabric может быть 'group' или 'path'
+            type: obj.role || obj.type,
+            x: parseFloat(((p.x - 400) / 40).toFixed(2)),
+            y: parseFloat((-((p.y - 250) / 40)).toFixed(2)),
+          };
+
+          // Логика для игроков
+          if (obj.role === 'player') {
+            return {
+              ...base,
+              type: 'player',
+              name: obj.customName || 'P'
+            };
+          }
+
+          // Логика для мяча
+          if (obj.role === 'ball') {
+            return { ...base, type: 'ball' };
+          }
+
+          // Логика для стрелок
+          if (obj.role === 'arrow') {
+            return {
+              ...base,
+              type: 'arrow',
+              from: obj.fromId,
+              to: obj.toId,
+              rad: obj.rad || 0,
+              line_color: obj.stroke || '#000000'
+            };
+          }
+
+          return base;
+        })
+        .filter(Boolean);
+
+    console.log("Syncing to 3D:", objects); // Посмотрите в консоль (F12), если объектов нет
+    return { objects };
+  };
+
   const handleTransformSelection = (newRole) => {
     const active = fabricCanvas.getActiveObjects();
     active.forEach(oldObj => {
@@ -383,7 +436,31 @@ const VolleyballEditor = () => {
 
   return (
     <div className="flex flex-col h-screen bg-gray-200 p-4 font-sans overflow-hidden text-xs">
-      <div className="flex flex-1 overflow-hidden">
+        {!show3D && (
+            <button
+                onClick={() => setShow3D(true)}
+                className="fixed top-4 right-4 z-50 bg-indigo-600 text-white px-4 py-2 rounded shadow-lg font-bold hover:bg-indigo-700 transition-colors"
+            >
+              🚀 OPEN 3D VIEW
+            </button>
+        )}
+
+        <div className="flex flex-1 overflow-hidden">
+          {/* 2. 3D OVERLAY MODE */}
+          {show3D && (
+              <div className="fixed inset-0 z-[60] bg-black">
+                <button
+                    onClick={() => setShow3D(false)}
+                    className="absolute top-4 right-4 z-[70] bg-red-600 text-white px-4 py-2 rounded font-bold shadow-xl hover:bg-red-700"
+                >
+                  ESC / CLOSE 3D
+                </button>
+
+                {/* Pass live data from canvas to 3D component */}
+                <Volleyball3DApp initialData={getCurrentDrillData()} />
+              </div>
+          )}
+
         <Sidebar
           onClearAll={handleClearAll}
           onAddQuickPlayer={handleAddQuickPlayer}
