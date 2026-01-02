@@ -163,13 +163,25 @@ const Sidebar = ({
         </button>
       </div>
 
-      <button 
-        onClick={onConnectSelected} 
-        disabled={selectedObjs.length !== 2} 
-        className="p-2 rounded text-white bg-orange-500 hover:bg-orange-600 disabled:bg-gray-300 font-bold"
-      >
-        🔗 Connect (2 Objects)
-      </button>
+            <div className="flex flex-col gap-2">
+                <button
+                    onClick={() => onConnectSelected('ball')}
+                    disabled={selectedObjs.length !== 2}
+                    className="p-2 rounded text-white bg-orange-500 hover:bg-orange-600 disabled:bg-gray-300 font-bold flex flex-col items-center"
+                >
+                    <span className="text-[10px]">🏐 BALL PATH</span>
+                    <span className="text-[8px] font-normal opacity-80">(Dotted Line)</span>
+                </button>
+
+                <button
+                    onClick={() => onConnectSelected('player')}
+                    disabled={selectedObjs.length !== 2}
+                    className="p-2 rounded text-white bg-blue-500 hover:bg-blue-600 disabled:bg-gray-300 font-bold flex flex-col items-center"
+                >
+                    <span className="text-[10px]">🏃 PLAYER MOVE</span>
+                    <span className="text-[8px] font-normal opacity-80">(Solid Line)</span>
+                </button>
+            </div>
 
       <button 
         onClick={onDeleteSelected} 

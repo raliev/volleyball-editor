@@ -281,7 +281,7 @@ export const createObjectByRole = (fabric, role, baseProps, name = '') => {
   };
 
   if (role === 'player') {
-    return new fabric.Group([
+    const player = new fabric.Group([
       new fabric.Circle({
         radius: 18,
         fill: 'white',
@@ -297,6 +297,8 @@ export const createObjectByRole = (fabric, role, baseProps, name = '') => {
         fontWeight: 'bold'
       })
     ], { ...base, customName: name || "P" });
+    if (baseProps.pose) player.pose = baseProps.pose;
+    return player;
   } else if (role === 'ball') {
   return new fabric.Group([
     new fabric.Circle({

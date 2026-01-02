@@ -7,7 +7,22 @@ export const CUSTOM_PROPS = [
   'id', 'role', 'customName', 'fromId', 'toId', 'rad',
   'label', 'labelBgColor', 'strokeDashArray', 'selectable',
   'hasControls', 'lockScalingX', 'lockScalingY', 'lockRotation',
-  'perPixelTargetFind', 'lineType', 'isMetadata'
+  'perPixelTargetFind', 'lineType', 'isMetadata', 'pose', 'arrowType', 'hitType'
+];
+
+export const HIT_TYPES = [
+  { label: 'Auto', value: 'auto' }, // Added Auto
+  { label: 'Offensive / Attack', value: 'offensive' },
+  { label: 'Defensive / Recovery', value: 'defensive' },
+  { label: 'Placement / Tactical', value: 'tactical' }
+];
+
+export const PLAYER_POSES = [
+  { label: 'Auto', value: 'auto' },
+  { label: 'Passing', value: 'passing' },
+  { label: 'Serving', value: 'serve' },
+  { label: 'Blocking', value: 'block' },
+  { label: 'Attacking', value: 'attack' }
 ];
 
 export const PRESET_COLORS = [

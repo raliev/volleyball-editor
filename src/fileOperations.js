@@ -42,32 +42,34 @@ export const exportObjJson = (fabricCanvas) => {
     objects: objs
         .filter(o => !o.isStatic && !o.isMetadata)
         .map(o => {
-          // Added 'ball' to the recognized roles
-          if (['player', 'target', 'cone', 'point', 'text', 'ball'].includes(o.role)) {
-            const p = o.getCenterPoint();
-            return {
-              type: o.role,
-              id: o.id,
-              name: o.role === 'text' ? (o.text || "") : (o.customName || ""),
-              x: parseFloat(((p.x - COURT_CENTER_X) / SCALE).toFixed(2)),
-              y: parseFloat((-((p.y - COURT_CENTER_Y) / SCALE)).toFixed(2))
-            };
-          } else if (o.role === 'arrow') {
-            return {
-              type: 'arrow',
-              id: o.id,
-              from: o.fromId,
-              to: o.toId,
-              curved: o.rad !== 0,
-              rad: o.rad,
-              lineType: o.lineType || 'normal', // Ensure wavy/lightning is saved
-              no: o.label || null,
-              line_color: o.stroke,
-              color: o.labelBgColor,
-              style: !o.strokeDashArray ? '-' : (o.strokeDashArray[0] === 10 ? '--' : ':')
-            };
-          }
-          return null;
+            if (['player', 'target', 'cone', 'point', 'text', 'ball'].includes(o.role)) {
+                const p = o.getCenterPoint();
+                return {
+                    type: o.role,
+                    id: o.id,
+                    name: o.role === 'text' ? (o.text || "") : (o.customName || ""),
+                    pose: o.role === 'player' ? (o.pose || 'auto') : "",
+                    x: parseFloat(((p.x - COURT_CENTER_X) / SCALE).toFixed(2)),
+                    y: parseFloat((-((p.y - COURT_CENTER_Y) / SCALE)).toFixed(2))
+                };
+            } else if (o.role === 'arrow') {
+                return {
+                    type: 'arrow',
+                    id: o.id,
+                    from: o.fromId,
+                    to: o.toId,
+                    curved: o.rad !== 0,
+                    rad: o.rad,
+                    lineType: o.lineType || 'normal',
+                    arrowType: o.arrowType || 'ball', // Persist arrow type
+                    hitType: o.hitType || 'tactical',   // Persist hit type
+                    no: o.label || null,
+                    line_color: o.stroke,
+                    color: o.labelBgColor,
+                    style: !o.strokeDashArray ? '-' : (o.strokeDashArray[0] === 10 ? '--' : ':')
+                };
+            }
+            return null;
         })
         .filter(Boolean) // This removes any null entries from the final JSON
   };
@@ -97,7 +99,7 @@ export const importObjJson = (e, fabricCanvas, snapEnabled, gridFrequency, onCom
             const objId = d.id || getUUID();
             const base = { left: cx, top: cy, id: objId, role: d.type };
 
-            const obj = createObjectByRole(fabric, d.type, base, d.name || "");
+            const obj = createObjectByRole(fabric, d.type, { ...base, pose: d.pose }, d.name || "");
             if (obj) fabricCanvas.add(obj);
           });
 
@@ -127,6 +129,8 @@ export const importObjJson = (e, fabricCanvas, snapEnabled, gridFrequency, onCom
               lockMovementY: true,
               id: d.id || getUUID(),
               role: 'arrow',
+              arrowType: d.arrowType || 'ball',
+              hitType: d.hitType || 'tactical',
               lineType: d.lineType || 'normal', // Restore lineType property
               fromId: d.from,
               toId: d.to,

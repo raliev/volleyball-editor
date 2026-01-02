@@ -33,8 +33,30 @@ const VolleyballEditor = () => {
   const [drillTitle, setDrillTitle] = useState("");
   const [drillDesc, setDrillDesc] = useState("");
   const [show3D, setShow3D] = useState(false);
+  const [selectionOrder, setSelectionOrder] = useState([]);
   useEffect(() => {
     if (!fabricCanvas) return;
+
+    const handleSelection = (options) => {
+      const currentSelected = fabricCanvas.getActiveObjects();
+      const currentIds = currentSelected.map(obj => obj.id);
+
+      setSelectionOrder(prev => {
+        // Keep existing IDs that are still selected, append new ones
+        const maintained = prev.filter(id => currentIds.includes(id));
+        const added = currentIds.filter(id => !prev.includes(id));
+        return [...maintained, ...added];
+      });
+      setSelectedObjs(currentSelected);
+    };
+
+    fabricCanvas.on('selection:created', handleSelection);
+    fabricCanvas.on('selection:updated', handleSelection);
+    fabricCanvas.on('selection:cleared', () => {
+      setSelectionOrder([]);
+      setSelectedObjs([]);
+    });
+
     fabricCanvas.drillTitle = drillTitle;
     fabricCanvas.drillDesc = drillDesc;
 
@@ -287,37 +309,34 @@ const VolleyballEditor = () => {
   const getCurrentDrillData = () => {
     if (!fabricCanvas) return null;
 
-    // Получаем все объекты, исключая статические элементы (сетку, фон) и метаданные
     const objects = fabricCanvas.getObjects()
         .filter(obj => !obj.isStatic && !obj.isMetadata)
         .map((obj) => {
           const p = obj.getCenterPoint();
 
-          // Используем константы из вашего проекта для перевода пикселей в метры
-          // COURT_CENTER_X = 400, COURT_CENTER_Y = 250, SCALE = 40
           const base = {
             id: obj.id,
-            // Проверяем роль (role), так как тип в Fabric может быть 'group' или 'path'
             type: obj.role || obj.type,
+            pose: obj.pose || "",
             x: parseFloat(((p.x - 400) / 40).toFixed(2)),
             y: parseFloat((-((p.y - 250) / 40)).toFixed(2)),
           };
 
-          // Логика для игроков
           if (obj.role === 'player') {
+            const circle = obj.item ? obj.item(0) : null;
             return {
               ...base,
               type: 'player',
-              name: obj.customName || 'P'
+              name: obj.customName || 'P',
+              pose: obj.pose || 'auto',
+              color: circle ? circle.fill : 'white' // Pass color to 3D
             };
           }
 
-          // Логика для мяча
           if (obj.role === 'ball') {
             return { ...base, type: 'ball' };
           }
 
-          // Логика для стрелок
           if (obj.role === 'arrow') {
             return {
               ...base,
@@ -325,7 +344,12 @@ const VolleyballEditor = () => {
               from: obj.fromId,
               to: obj.toId,
               rad: obj.rad || 0,
-              line_color: obj.stroke || '#000000'
+              line_color: obj.stroke || '#000000',
+              arrowType: obj.arrowType || 'ball',
+              style: !obj.strokeDashArray ? '-' : (obj.strokeDashArray[0] === 10 ? '--' : ':'),
+              // ADD THESE TWO LINES:
+              label: obj.label || '',
+              labelBgColor: obj.labelBgColor || '#ffffff'
             };
           }
 
@@ -333,7 +357,6 @@ const VolleyballEditor = () => {
         })
         .filter(Boolean);
 
-    console.log("Syncing to 3D:", objects); // Посмотрите в консоль (F12), если объектов нет
     return { objects };
   };
 
@@ -374,33 +397,43 @@ const VolleyballEditor = () => {
     saveState();
   };
 
-  const handleConnectSelected = () => {
-    const active = [...fabricCanvas.getActiveObjects()];
-    if (active.length !== 2) return;
+  const handleConnectSelected = (type) => {
+    // Use the order from our state instead of the default array
+    if (selectionOrder.length < 2) return;
+
+    const o1 = fabricCanvas.getObjects().find(o => o.id === selectionOrder[0]);
+    const o2 = fabricCanvas.getObjects().find(o => o.id === selectionOrder[1]);
+
+    if (!o1 || !o2) return;
+
     fabricCanvas.discardActiveObject();
-    const o1 = active[0];
-    const o2 = active[1];
     const id = getUUID();
     const { pathStr } = calculateArrowData(o1, o2, 0);
+
+    const isBall = type === 'ball';
     const arrow = new fabric.Path(pathStr, {
-      stroke: '#000000', 
-      strokeWidth: 3, 
+      stroke: '#000000',
+      strokeWidth: 3,
       fill: '',
-      selectable: true, 
+      selectable: true,
       hasControls: false,
-      lockMovementX: true, 
+      lockMovementX: true,
       lockMovementY: true,
-      id, 
-      role: 'arrow', 
-      fromId: o1.id, 
-      toId: o2.id, 
+      id,
+      role: 'arrow',
+      arrowType: type,
+      hitType: 'auto', // Set Auto as default
+      fromId: o1.id,
+      toId: o2.id,
       rad: 0,
-      label: '', 
-      labelBgColor: '#ffffff'
+      label: '',
+      labelBgColor: '#ffffff',
+      // Configuration A (Dotted [2,4]) for ball, B (Solid null) for player
+      strokeDashArray: isBall ? [2, 4] : null
     });
+
     fabricCanvas.add(arrow);
     updateArrow(arrow, fabricCanvas);
-    fabricCanvas.requestRenderAll();
     saveState();
   };
 
@@ -432,6 +465,7 @@ const VolleyballEditor = () => {
 
   const handleUpdateSelected = () => {
     setSelectedObjs([...fabricCanvas.getActiveObjects()]);
+    saveState(); // Added to persist changes made in PropsPanel
   };
 
   return (

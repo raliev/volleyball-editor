@@ -1,5 +1,5 @@
 import React from 'react';
-import { PRESET_COLORS } from '../constants';
+import { HIT_TYPES, PLAYER_POSES, PRESET_COLORS } from '../constants';
 
 const PropsPanel = ({
                       selectedObjs,
@@ -43,6 +43,24 @@ const PropsPanel = ({
   }
 
   const selectedObj = selectedObjs[0];
+
+  const isOffensivePossible = () => {
+    if (selectedObj.arrowType !== 'ball') return true;
+
+    const from = fabricCanvas.getObjects().find(o => o.id === selectedObj.fromId);
+    const to = fabricCanvas.getObjects().find(o => o.id === selectedObj.toId);
+    if (!from || !to) return true;
+
+    // Convert pixels to meters (Center is 400px, Scale is 40px/m)
+    const startX = (from.getCenterPoint().x - 400) / 40;
+    const endX = (to.getCenterPoint().x - 400) / 40;
+
+    // Logic: Back zone (dist > 6m), Opponent Perimeter (dist < 3m on other side)
+    const fromBackZone = Math.abs(startX) > 6;
+    const toOpponentPerimeter = Math.abs(endX) < 3 && (Math.sign(startX) !== Math.sign(endX));
+
+    return !(fromBackZone && toOpponentPerimeter);
+  };
 
   const handleLineTypeChange = (value) => {
     selectedObj.set('lineType', value);
@@ -111,128 +129,136 @@ const PropsPanel = ({
   };
 
   return (
-    <div className="w-72 bg-white p-4 rounded shadow-lg overflow-y-auto text-sm">
-      <h2 className="font-bold border-b pb-2 text-gray-700 uppercase text-xs tracking-wider">Props</h2>
-      <div className="mt-4 flex flex-col gap-4">
-        <p className="text-gray-400 uppercase text-[10px]">Type: {selectedObj.role}</p>
+      <div className="w-72 bg-white p-4 rounded shadow-lg overflow-y-auto text-sm">
+        <h2 className="font-bold border-b pb-2 text-gray-700 uppercase text-xs tracking-wider">Props</h2>
+        <div className="mt-4 flex flex-col gap-4">
 
-        {selectedObj.role === 'text' && (
-          <div>
-            <label className="font-bold block mb-1">Text Content:</label>
-            <textarea 
-              className="border p-2 w-full rounded" 
-              value={selectedObj.text} 
-              onChange={(e) => handleTextChange(e.target.value)} 
-            />
-          </div>
-        )}
-
-        {selectedObj.role === 'player' && (
-          <div>
-            <label className="font-bold block mb-1">Name (letter):</label>
-            <input 
-              className="border p-2 w-full rounded" 
-              value={selectedObj.customName} 
-              onChange={(e) => handlePlayerNameChange(e.target.value)} 
-            />
-          </div>
-        )}
-
-        {selectedObj.role === 'arrow' && (
-          <div className="flex flex-col gap-4">
-            <button 
-              onClick={handleArrowReverse} 
-              className="bg-gray-100 border p-2 rounded hover:bg-gray-200"
-            >
-              🔄 Reverse
-            </button>
-            
-            <div>
-              <label className="font-bold block mb-1">Line Color:</label>
-              <div className="flex flex-wrap gap-2">
-                {PRESET_COLORS.map(c => (
-                  <button 
-                    key={c.value} 
-                    onClick={() => handleArrowColorChange(c.value)}
-                    className={`w-7 h-7 rounded-full border-2 ${
-                      selectedObj.stroke === c.value 
-                        ? 'border-blue-500 shadow-sm' 
-                        : 'border-transparent'
-                    }`} 
-                    style={{ backgroundColor: c.value }} 
-                  />
-                ))}
+          {/* Player Section */}
+          {selectedObj.role === 'player' && (
+              <div className="flex flex-col gap-4">
+                <div>
+                  <label className="font-bold block mb-1">3D Pose:</label>
+                  <select
+                      className="border p-2 w-full rounded"
+                      value={selectedObj.pose || 'auto'}
+                      onChange={(e) => {
+                        selectedObj.set('pose', e.target.value);
+                        onUpdateSelected();
+                      }}
+                  >
+                    {PLAYER_POSES.map(p => (
+                        <option key={p.value} value={p.value}>{p.label}</option>
+                    ))}
+                  </select>
+                </div>
               </div>
-            </div>
-            
-            <div>
-              <label className="font-bold block mb-1">No:</label>
-              <input 
-                className="border p-2 w-full rounded" 
-                value={selectedObj.label} 
-                onChange={(e) => handleArrowLabelChange(e.target.value)} 
-              />
-            </div>
-            
-            <div>
-              <label className="font-bold block mb-1">No's Color:</label>
-              <div className="flex flex-wrap gap-2">
-                {PRESET_COLORS.map(c => (
-                  <button 
-                    key={c.value} 
-                    onClick={() => handleArrowLabelColorChange(c.value)}
-                    className={`w-7 h-7 rounded-full border-2 ${
-                      selectedObj.labelBgColor === c.value 
-                        ? 'border-blue-500 shadow-sm' 
-                        : 'border-transparent'
-                    }`} 
-                    style={{ backgroundColor: c.value }} 
+          )}
+
+          {/* Arrow Section (General for all arrows) */}
+          {selectedObj.role === 'arrow' && (
+              <div className="flex flex-col gap-2">
+                <button
+                    onClick={handleArrowReverse}
+                    className="w-full bg-indigo-50 text-indigo-600 border border-indigo-200 p-2 rounded font-bold hover:bg-indigo-100 transition-colors flex items-center justify-center gap-2"
+                >
+                  🔄 REVERSE DIRECTION
+                </button>
+
+                <div>
+                  <label className="font-bold block mb-1">Line Color:</label>
+                  <div className="flex flex-wrap gap-2">
+                    {PRESET_COLORS.map(c => (
+                        <button
+                            key={c.value}
+                            onClick={() => handleArrowColorChange(c.value)}
+                            className={`w-7 h-7 rounded-full border-2 ${
+                                selectedObj.stroke === c.value
+                                    ? 'border-blue-500 shadow-sm'
+                                    : 'border-transparent'
+                            }`}
+                            style={{ backgroundColor: c.value }}
+                        />
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <label className="font-bold block mb-1">No:</label>
+                  <input
+                      className="border p-2 w-full rounded"
+                      value={selectedObj.label}
+                      onChange={(e) => handleArrowLabelChange(e.target.value)}
                   />
-                ))}
+                </div>
+                <div>
+                  <label className="font-bold block mb-1">No's Color:</label>
+                  <div className="flex flex-wrap gap-2">
+                    {PRESET_COLORS.map(c => (
+                        <button
+                            key={c.value}
+                            onClick={() => handleArrowLabelColorChange(c.value)}
+                            className={`w-7 h-7 rounded-full border-2 ${
+                                selectedObj.labelBgColor === c.value
+                                    ? 'border-blue-500 shadow-sm'
+                                    : 'border-transparent'
+                            }`}
+                            style={{ backgroundColor: c.value }}
+                        />
+                    ))}
+                  </div>
+                </div>
+
+                {/* Ball Path Specific Section */}
+                {selectedObj.arrowType === 'ball' && (
+                    <div className="mt-2 p-2 bg-gray-50 rounded border">
+                      <label className="font-bold block mb-1">Hit Property:</label>
+                      <select
+                          className="border p-2 w-full rounded bg-white"
+                          value={selectedObj.hitType || 'auto'}
+                          onChange={(e) => {
+                            selectedObj.set('hitType', e.target.value);
+                            onUpdateSelected();
+                            fabricCanvas.renderAll();
+                          }}
+                      >
+                        {HIT_TYPES.map(h => {
+                          const disabled = h.value === 'offensive' && !isOffensivePossible();
+                          return (
+                              <option key={h.value} value={h.value} disabled={disabled}>
+                                {h.label} {disabled ? '(Impossible)' : ''}
+                              </option>
+                          );
+                        })}
+                      </select>
+                      {!isOffensivePossible() && (
+                          <p className="text-[10px] text-red-500 mt-1 italic">
+                            * Offensive hit unavailable from back court to perimeter.
+                          </p>
+                      )}
+                    </div>
+                )}
               </div>
-            </div>
-            
-            <div>
-              <label className="font-bold block">Curvature:</label>
-              <input 
-                type="range" 
-                min="-2.5" 
-                max="2.5" 
-                step="0.1" 
-                className="w-full mt-1" 
-                value={selectedObj.rad} 
-                onChange={(e) => handleArrowCurvatureChange(e.target.value)} 
-              />
-            </div>
-            <div>
-              <label className="font-bold block mb-1">Arrow Type:</label>
-              <select
-                  className="border p-2 w-full rounded"
-                  value={selectedObj.lineType || 'normal'}
-                  onChange={(e) => handleLineTypeChange(e.target.value)}
-              >
-                <option value="normal">Normal / Set</option>
-                <option value="wavy">Wavy (Float Serve)</option>
-                <option value="lightning">Lightning (Attack)</option>
-              </select>
-            </div>
-            <select
-                className="border p-2 w-full rounded"
-                value={
-                  !selectedObj.strokeDashArray ? 'solid' :
-                      (selectedObj.strokeDashArray[0] === 10 ? 'dashed' : 'dotted')
-                }
-                onChange={(e) => handleArrowStyleChange(e.target.value)}
-            >
-              <option value="solid">Solid line</option>
-              <option value="dashed">Dashed line</option>
-              <option value="dotted">Dotted line</option>
-            </select>
-          </div>
-        )}
+          )}
+        </div>
       </div>
-    </div>
   );
+}; // End of component
+
+const isOffensivePossible = () => {
+  if (selectedObj.arrowType !== 'ball') return true;
+
+  const from = fabricCanvas.getObjects().find(o => o.id === selectedObj.fromId);
+  const to = fabricCanvas.getObjects().find(o => o.id === selectedObj.toId);
+  if (!from || !to) return true;
+
+  // Convert pixel to meters relative to center (0,0)
+  const startX = (from.getCenterPoint().x - 400) / 40;
+  const endX = (to.getCenterPoint().x - 400) / 40;
+
+  // Logic: Back zone > 6m, Opponent Perimeter < 3m
+  const fromBackZone = Math.abs(startX) > 6;
+  const toOpponentPerimeter = Math.abs(endX) < 3 && (Math.sign(startX) !== Math.sign(endX));
+
+  return !(fromBackZone && toOpponentPerimeter);
 };
 
 export default PropsPanel;
