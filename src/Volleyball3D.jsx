@@ -25,7 +25,18 @@ export default function Volleyball3DApp({ initialData }) {
                     }
                 });
                 const rotationY = (dx === 0 && dz === 0) ? (obj.x > 0 ? -Math.PI/2 : Math.PI/2) : Math.atan2(dx, dz);
-                return <VolleyballPlayer pose={obj.pose} key={obj.id} position={{x: obj.x, z: -obj.y}} name={obj.name} rotationY={rotationY} />;
+                let playerTexture = "/models/texture-basic.png";
+
+                return (
+                    <VolleyballPlayer
+                        key={obj.id}
+                        pose={obj.pose}
+                        position={{x: obj.x, z: -obj.y}}
+                        name={obj.name}
+                        rotationY={rotationY}
+                        //texturePath={playerTexture} // Pass the specific texture here
+                    />
+                );
             }
             if (obj.type === 'ball') return <Ball3D key={obj.id} position={{x: obj.x, z: -obj.y}} />;
             if (obj.type === 'arrow') {

@@ -1,7 +1,7 @@
 // src/threeD/VolleyballPlayer.jsx
-import React, { useMemo } from 'react';
-// Added Billboard to the imports to fix the ReferenceError
-import { Text, useGLTF, Billboard } from '@react-three/drei';
+import React, { useMemo, useEffect } from 'react';
+import { Text, useGLTF, Billboard, useTexture } from '@react-three/drei';
+import * as THREE from 'three';
 
 const POSE_MODELS = {
     'attack': '/models/attack-pose.glb',
@@ -10,32 +10,57 @@ const POSE_MODELS = {
     'passing': '/models/passing-pose.glb',
     'auto': '/models/passing-pose.glb'
 };
+// Use a tiny transparent pixel as a fallback instead of the modelPath
+const PADDING_TEXTURE = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=";
 
 export const VolleyballPlayer = ({
                                      position,
                                      name,
-                                     color = "#3b82f6",
+                                     texturePath,
                                      rotationY = 0,
-                                     pose = "stand"
+                                     pose = "passing"
                                  }) => {
-    const modelPath = POSE_MODELS[pose] || POSE_MODELS['stand'];
+    const modelPath = POSE_MODELS[pose] || POSE_MODELS['passing'];
     const { scene } = useGLTF(modelPath);
 
-    const clonedScene = useMemo(() => scene.clone(), [scene]);
+    // FIX: Pass the padding texture if no texturePath is provided
+    const texture = useTexture(texturePath || PADDING_TEXTURE);
 
-    const heightOffset = 0;
-    const jumpY =  0;
+    useEffect(() => {
+        if (texture && texturePath) {
+            texture.flipY = false;
+            texture.colorSpace = THREE.SRGBColorSpace;
+        }
+    }, [texture, texturePath]);
+
+    const clonedScene = useMemo(() => {
+        const clone = scene.clone();
+
+        // ГЛАВНОЕ ИЗМЕНЕНИЕ:
+        // Если пропс texturePath не передан, мы просто возвращаем клон
+        // со всеми его родными текстурами и настройками.
+        if (!texturePath) return clone;
+
+        // Если же путь передан, проходим по мешам и меняем карту цветов
+        clone.traverse((child) => {
+            if (child.isMesh) {
+                // Клонируем материал, чтобы изменения одного игрока не влияли на других
+                child.material = child.material.clone();
+                child.material.map = texture;
+                child.material.needsUpdate = true;
+            }
+        });
+        return clone;
+    }, [scene, texture, texturePath]);
 
     return (
-        <group position={[position.x, jumpY, position.z]} rotation={[0, rotationY, 0]}>
+        <group position={[position.x, 0, position.z]} rotation={[0, rotationY, 0]}>
             <primitive
                 object={clonedScene}
-                scale={[1, 1, 1]} // Используем реальный размер из Blender
-                position={[0, heightOffset, 0]}
-                rotation={[0, 0, 0]}
+                scale={[1, 1, 1]}
+                position={[0, 0, 0]}
             />
-            {/* Now correctly defined, this ensures text always faces the viewer */}
-            <Billboard position={[-0.2, heightOffset+1.3 , -0.2]}>
+            <Billboard position={[-0.2, 1.3 , -0.2]}>
                 <Text
                     fontSize={0.15}
                     color="white"
@@ -50,4 +75,4 @@ export const VolleyballPlayer = ({
     );
 };
 
-useGLTF.preload('/models/attack-pose.glb');
+useGLTF.preload('/models/passing-pose.glb');
